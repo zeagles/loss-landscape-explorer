@@ -2,10 +2,8 @@
 
 An interactive, web-based 3D visualizer for exploring optimization trajectories (SGDM vs. Adam) and real-time Hessian curvature analysis on a non-convex loss surface.
 
-![Demo Screen](https://via.placeholder.com/800x450.png?text=Loss+Landscape+Explorer+Demo) <!-- ※ スクリーンショットを撮ったら画像パスを差し替えてね -->
-
 ## 🚀 Live Demo
-- [View Live Demo](https://<your-github-username>.github.io/<your-repository-name>/)
+- [View Live Demo](https://zeagles.github.io/loss-landscape-explorer/)
 
 ## ✨ Key Features
 - **3D Surface Visualization**: Interactive rendering of a non-convex loss function using Three.js and OrbitControls.
