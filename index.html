@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>LOSS LANDSCAPE EXPLORER - HESSIAN ANALYSIS</title>
+  <!-- KaTeX CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+  <style>
+    body { margin: 0; overflow: hidden; background: #0a0c14; font-family: 'Segoe UI', Roboto, sans-serif; color: #c0c6d8; user-select: none; }
+    
+    #top-bar { position: absolute; top: 0; left: 0; width: 100%; height: 36px; background: #121624; border-bottom: 1px solid #1e2638; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; box-sizing: border-box; font-size: 11px; letter-spacing: 1px; }
+    .brand { color: #00f0ff; font-weight: bold; display: flex; align-items: center; gap: 8px; }
+    .menu { display: flex; gap: 20px; color: #64748b; }
+
+    #ui { position: absolute; top: 48px; left: 15px; width: 360px; background: rgba(15, 20, 32, 0.88); backdrop-filter: blur(10px); border: 1px solid #1e293b; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); padding: 15px; box-sizing: border-box; max-height: 90vh; overflow-y: auto; }
+    .panel-header { font-size: 11px; font-weight: bold; letter-spacing: 1.5px; color: #94a3b8; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e293b; padding-bottom: 6px; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .opt-card { background: rgba(30, 41, 59, 0.4); border: 1px solid #1e293b; border-radius: 6px; padding: 8px; font-size: 11px; }
+    .opt-card.sgd { border-left: 3px solid #ef4444; }
+    .opt-card.adam { border-left: 3px solid #10b981; }
+    .opt-title { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 6px; }
+    
+    .stat-row { display: flex; justify-content: space-between; margin: 3px 0; color: #94a3b8; }
+    .stat-val { color: #f8fafc; font-family: monospace; }
+
+    /* 数式セクションのスタイル */
+    .math-section { background: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-top: 10px; font-size: 11px; }
+    .math-title { font-weight: bold; color: #facc15; margin-bottom: 6px; display: flex; justify-content: space-between; }
+    .math-block { background: rgba(0, 0, 0, 0.3); border-radius: 4px; padding: 6px; margin: 6px 0; text-align: center; color: #e2e8f0; font-size: 12px; }
+
+    .ctrl-group { font-size: 11px; margin-top: 8px; }
+    .ctrl-row { display: flex; align-items: center; justify-content: space-between; margin: 6px 0; }
+    input[type="range"] { -webkit-appearance: none; width: 100px; height: 4px; background: #334155; border-radius: 2px; outline: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 10px; border-radius: 50%; background: #00f0ff; cursor: pointer; }
+    
+    .editable-val { cursor: pointer; border-bottom: 1px dashed #64748b; padding: 0 2px; }
+    .editable-val:hover { color: #00f0ff; border-color: #00f0ff; }
+    .edit-input { width: 50px; background: #1e293b; color: #00f0ff; border: 1px solid #00f0ff; border-radius: 3px; font-family: monospace; font-size: 11px; text-align: right; outline: none; }
+
+    .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+    button { background: #1e293b; border: 1px solid #334155; color: #38bdf8; padding: 6px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+    button:hover { background: #334155; border-color: #38bdf8; }
+  </style>
+</head>
+<body>
+
+  <div id="top-bar">
+    <div class="brand"><span>❖ OPTIMIZE 2.1</span></div>
+    <div class="menu"><span>File</span><span>Edit</span><span>Analysis</span><span>Settings</span></div>
+  </div>
+
+  <div id="ui">
+    <div class="panel-header">
+      <span>LOSS LANDSCAPE EXPLORER</span>
+      <span style="color:#00f0ff;">LIVE</span>
+    </div>
+
+    <div class="grid-2">
+      <!-- SGDM Card -->
+      <div class="opt-card sgd">
+        <div class="opt-title" style="color:#ef4444;">
+          <label><input type="checkbox" id="enable-sgd" checked> SGDM</label>
+        </div>
+        <div class="stat-row"><span>Epoch</span><span class="stat-val" id="sgd-epoch">0</span></div>
+        <div class="stat-row"><span>Loss</span><span class="stat-val" id="sgd-loss">0.0000</span></div>
+      </div>
+      <!-- ADAM Card -->
+      <div class="opt-card adam">
+        <div class="opt-title" style="color:#10b981;">
+          <label><input type="checkbox" id="enable-adam" checked> ADAM</label>
+        </div>
+        <div class="stat-row"><span>Epoch</span><span class="stat-val" id="adam-epoch">0</span></div>
+        <div class="stat-row"><span>Loss</span><span class="stat-val" id="adam-loss">0.0000</span></div>
+      </div>
+    </div>
+
+    <!-- Hessian Analysis Board & Math -->
+    <div class="math-section">
+      <div class="math-title">
+        <span>HESSIAN CURVATURE</span>
+        <span style="font-size:9px; color:#64748b;">FORMULA</span>
+      </div>
+      <!-- Loss Function & Gradient -->
+      <div style="margin-bottom: 8px;">
+          <span style="color:#94a3b8; font-size:10px;">LOSS FUNCTION:</span>
+          <div class="math-block" id="math-loss"></div>
+      </div>
+
+      <!-- KaTeX 数式表示 -->
+      <div class="math-block" id="math-hessian"></div>
+      <div class="math-block" id="math-eigen"></div>
+
+      <!-- SGDM Curvature -->
+      <div style="color:#ef4444; font-weight:bold; margin-top:8px;">SGDM Position:</div>
+      <div class="stat-row"><span><span style="color:#facc15;">●</span> $\lambda_1$ (Max Direction)</span><span class="stat-val" id="sgd-e1">0.00</span></div>
+      <div class="stat-row"><span><span style="color:#06b6d4;">●</span> $\lambda_2$ (Min Direction)</span><span class="stat-val" id="sgd-e2">0.00</span></div>
+
+      <!-- ADAM Curvature -->
+      <div style="color:#10b981; font-weight:bold; margin-top:6px;">ADAM Position:</div>
+      <div class="stat-row"><span><span style="color:#facc15;">●</span> $\lambda_1$ (Max Direction)</span><span class="stat-val" id="adam-e1">0.00</span></div>
+      <div class="stat-row"><span><span style="color:#06b6d4;">●</span> $\lambda_2$ (Min Direction)</span><span class="stat-val" id="adam-e2">0.00</span></div>
+
+      <!-- Stability Condition Formula -->
+      <div style="margin-top:8px; border-top:1px dashed #334155; padding-top:6px;">
+        <span style="color:#94a3b8; font-size:10px;">SGD Stability Condition:</span>
+        <div class="math-block" id="math-stable" style="margin-top:4px;"></div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="ctrl-group">
+      <div class="ctrl-row">
+        <span>Learning Rate ($\eta$)</span>
+        <input type="range" id="lr" min="0.001" max="1.0" step="0.001" value="0.03">
+        <span id="lr-val" class="stat-val editable-val">0.030</span>
+      </div>
+      <div class="ctrl-row">
+        <span>SGDM Momentum ($\gamma$)</span>
+        <input type="range" id="sgd-mom" min="0" max="0.99" step="0.01" value="0.8">
+        <span id="sgd-mom-val" class="stat-val editable-val">0.80</span>
+      </div>
+      <div class="ctrl-row">
+        <span>Adam Beta1 ($\beta_1$)</span>
+        <input type="range" id="adam-b1" min="0" max="0.99" step="0.01" value="0.9">
+        <span id="adam-b1-val" class="stat-val editable-val">0.90</span>
+      </div>
+      <div class="ctrl-row">
+        <span>Sim Speed</span>
+        <input type="range" id="speed" min="10" max="500" step="10" value="50">
+        <span id="speed-val" class="stat-val editable-val">50ms</span>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button id="pause-btn">PAUSE</button>
+      <button id="reset-btn">RESET</button>
+    </div>
+  </div>
+
+  <!-- JS Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+
+  <script>
+    // KaTeX 数式レンダリング
+    katex.render("H = \\begin{pmatrix} \\frac{\\partial^2 L}{\\partial x^2} & \\frac{\\partial^2 L}{\\partial x \\partial y} \\\\[4pt] \\frac{\\partial^2 L}{\\partial y \\partial x} & \\frac{\\partial^2 L}{\\partial y^2} \\end{pmatrix}", document.getElementById('math-hessian'));
+    katex.render("H v_i = \\lambda_i v_i \\quad (i = 1, 2)", document.getElementById('math-eigen'));
+    katex.render("\\eta < \\frac{2}{\\lambda_{\\max}} \\implies \\text{Stable Convergence}", document.getElementById('math-stable'));
+    katex.render("L(x,y) = x^2 - y^2 + 0.1y^4", document.getElementById('math-loss'));
+
+    function loss(x, y) { return x * x - y * y + 0.1 * Math.pow(y, 4); }
+    function grad(x, y) { return { dx: 2 * x, dy: -2 * y + 0.4 * Math.pow(y, 3) }; }
+    function hessian(x, y) { return { fxx: 2.0, fxy: 0.0, fyy: -2.0 + 1.2 * y * y }; }
+
+    function getFullHessianAnalysis(H) {
+      const a = H.fxx, b = H.fxy, d = H.fyy;
+      const tr = a + d, det = a * d - b * b;
+      const gap = Math.sqrt(Math.max(0, (tr * tr) / 4 - det));
+      
+      const l1 = tr / 2 + gap; // Max Eigenvalue
+      const l2 = tr / 2 - gap; // Min Eigenvalue
+
+      function getVector(lambda) {
+        let vx = lambda - d, vy = b;
+        if (Math.abs(b) < 1e-5) {
+          vx = Math.abs(a - lambda) < Math.abs(d - lambda) ? 1 : 0;
+          vy = Math.abs(a - lambda) < Math.abs(d - lambda) ? 0 : 1;
+        }
+        const len = Math.sqrt(vx*vx + vy*vy) || 1;
+        return { x: vx / len, y: vy / len };
+      }
+
+      return {
+        l1, v1: getVector(l1),
+        l2, v2: getVector(l2)
+      };
+    }
+
+    // Three.js Scene Setup
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0c14);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(6, 7, 7);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    scene.add(new THREE.AmbientLight(0x334155));
+    const light = new THREE.DirectionalLight(0x00f0ff, 0.8);
+    light.position.set(5, 10, 5);
+    scene.add(light);
+
+    const grid = new THREE.GridHelper(10, 20, 0x1e293b, 0x0f172a);
+    grid.position.y = -2;
+    scene.add(grid);
+
+    // Surface Mesh
+    const geometry = new THREE.PlaneGeometry(6, 6, 50, 50).rotateX(-Math.PI / 2);
+    const posAttr = geometry.attributes.position;
+    for (let i = 0; i < posAttr.count; i++) {
+      posAttr.setY(i, loss(posAttr.getX(i), posAttr.getZ(i)));
+    }
+    geometry.computeVertexNormals();
+    const surface = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x3b82f6, wireframe: true, transparent: true, opacity: 0.4 }));
+    scene.add(surface);
+
+    // Balls & Lines
+    const ballGeo = new THREE.SphereGeometry(0.1, 32, 32);
+    const sgdBall = new THREE.Mesh(ballGeo, new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+    const adamBall = new THREE.Mesh(ballGeo, new THREE.MeshBasicMaterial({ color: 0x10b981 }));
+    scene.add(sgdBall); scene.add(adamBall);
+
+    const sgdPoints = [], adamPoints = [];
+    const sgdGeo = new THREE.BufferGeometry(), adamGeo = new THREE.BufferGeometry();
+    const sgdLine = new THREE.Line(sgdGeo, new THREE.LineBasicMaterial({ color: 0xef4444 }));
+    const adamLine = new THREE.Line(adamGeo, new THREE.LineBasicMaterial({ color: 0x10b981 }));
+    scene.add(sgdLine); scene.add(adamLine);
+
+    // Hessian 矢印ヘルパー
+    const sgdArrow1 = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, 0xfacc15, 0.15, 0.08);
+    const sgdArrow2 = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, 0x06b6d4, 0.15, 0.08);
+    const adamArrow1 = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, 0xfacc15, 0.15, 0.08);
+    const adamArrow2 = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, 0x06b6d4, 0.15, 0.08);
+    scene.add(sgdArrow1); scene.add(sgdArrow2); scene.add(adamArrow1); scene.add(adamArrow2);
+
+    // State
+    let sgdPos = { x: 2.0, z: 0.05 }, sgdV = { x: 0, z: 0 }, sgdEpoch = 0;
+    let adamPos = { x: 2.0, z: 0.05 }, m = { x: 0, z: 0 }, v = { x: 0, z: 0 }, t = 0, adamEpoch = 0;
+    let isPaused = false;
+
+    function reset() {
+      sgdPos = { x: 2.0, z: 0.05 }; sgdV = { x: 0, z: 0 }; sgdEpoch = 0;
+      adamPos = { x: 2.0, z: 0.05 }; m = { x: 0, z: 0 }; v = { x: 0, z: 0 }; t = 0; adamEpoch = 0;
+      sgdPoints.length = 0; adamPoints.length = 0;
+      sgdGeo.setFromPoints([]); adamGeo.setFromPoints([]);
+    }
+
+    document.getElementById('reset-btn').onclick = reset;
+    document.getElementById('pause-btn').onclick = () => {
+      isPaused = !isPaused;
+      document.getElementById('pause-btn').textContent = isPaused ? 'RESUME' : 'PAUSE';
+    };
+
+    function setupEditableControl(inputId, valDisplayId, isMs = false) {
+      const slider = document.getElementById(inputId);
+      const display = document.getElementById(valDisplayId);
+
+      function updateDisplay(v) {
+        display.textContent = isMs ? `${parseInt(v)}ms` : parseFloat(v).toFixed(3);
+      }
+
+      slider.oninput = (e) => updateDisplay(e.target.value);
+
+      display.onclick = () => {
+        const currentVal = slider.value;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'edit-input';
+        input.value = currentVal;
+        input.min = slider.min;
+        input.max = slider.max;
+        input.step = slider.step;
+
+        display.replaceWith(input);
+        input.focus();
+        input.select();
+
+        function commitValue() {
+          let num = parseFloat(input.value);
+          if (isNaN(num)) num = currentVal;
+          num = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), num));
+          slider.value = num;
+          updateDisplay(num);
+          input.replaceWith(display);
+        }
+
+        input.onblur = commitValue;
+        input.onkeydown = (e) => { if (e.key === 'Enter') commitValue(); };
+      };
+    }
+
+    setupEditableControl('lr', 'lr-val');
+    setupEditableControl('sgd-mom', 'sgd-mom-val');
+    setupEditableControl('adam-b1', 'adam-b1-val');
+    setupEditableControl('speed', 'speed-val', true);
+
+    // Step Loop
+    let timer = null;
+    function scheduleStep() {
+      if (timer) clearTimeout(timer);
+      const interval = parseInt(document.getElementById('speed').value);
+      
+      if (!isPaused) {
+        const lr = parseFloat(document.getElementById('lr').value);
+
+        if (document.getElementById('enable-sgd').checked) {
+          const mom = parseFloat(document.getElementById('sgd-mom').value);
+          const g = grad(sgdPos.x, sgdPos.z);
+          sgdV.x = mom * sgdV.x + lr * g.dx;
+          sgdV.z = mom * sgdV.z + lr * g.dy;
+          sgdPos.x -= sgdV.x; sgdPos.z -= sgdV.z;
+          sgdEpoch++;
+        }
+
+        if (document.getElementById('enable-adam').checked) {
+          t++;
+          const b1 = parseFloat(document.getElementById('adam-b1').value);
+          const g = grad(adamPos.x, adamPos.z);
+          m.x = b1 * m.x + (1 - b1) * g.dx; m.z = b1 * m.z + (1 - b1) * g.dy;
+          v.x = 0.999 * v.x + 0.001 * (g.dx ** 2); v.z = 0.999 * v.z + 0.001 * (g.dy ** 2);
+          const mHatX = m.x / (1 - Math.pow(b1, t)), mHatZ = m.z / (1 - Math.pow(b1, t));
+          const vHatX = v.x / (1 - Math.pow(0.999, t)), vHatZ = v.z / (1 - Math.pow(0.999, t));
+          adamPos.x -= (lr / (Math.sqrt(vHatX) + 1e-8)) * mHatX;
+          adamPos.z -= (lr / (Math.sqrt(vHatZ) + 1e-8)) * mHatZ;
+          adamEpoch++;
+        }
+      }
+
+      timer = setTimeout(scheduleStep, interval);
+    }
+    scheduleStep();
+
+    // Render Loop
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const enableSGD = document.getElementById('enable-sgd').checked;
+      const enableAdam = document.getElementById('enable-adam').checked;
+
+      sgdBall.visible = sgdLine.visible = sgdArrow1.visible = sgdArrow2.visible = enableSGD;
+      adamBall.visible = adamLine.visible = adamArrow1.visible = adamArrow2.visible = enableAdam;
+
+      // SGD Update & Analysis
+      if (enableSGD) {
+        sgdBall.position.set(sgdPos.x, loss(sgdPos.x, sgdPos.z) + 0.1, sgdPos.z);
+        sgdPoints.push(sgdBall.position.clone());
+        sgdGeo.setFromPoints(sgdPoints);
+        document.getElementById('sgd-epoch').textContent = sgdEpoch;
+        document.getElementById('sgd-loss').textContent = loss(sgdPos.x, sgdPos.z).toFixed(4);
+
+        const sgdH = getFullHessianAnalysis(hessian(sgdPos.x, sgdPos.z));
+        document.getElementById('sgd-e1').textContent = sgdH.l1.toFixed(2);
+        document.getElementById('sgd-e2').textContent = sgdH.l2.toFixed(2);
+
+        sgdArrow1.position.set(sgdPos.x, loss(sgdPos.x, sgdPos.z) + 0.15, sgdPos.z);
+        sgdArrow1.setDirection(new THREE.Vector3(sgdH.v1.x, 0, sgdH.v1.y).normalize());
+        sgdArrow1.setLength(Math.min(1.5, 0.2 + Math.abs(sgdH.l1) * 0.15));
+
+        sgdArrow2.position.set(sgdPos.x, loss(sgdPos.x, sgdPos.z) + 0.15, sgdPos.z);
+        sgdArrow2.setDirection(new THREE.Vector3(sgdH.v2.x, 0, sgdH.v2.y).normalize());
+        sgdArrow2.setLength(Math.min(1.5, 0.2 + Math.abs(sgdH.l2) * 0.15));
+      }
+
+      // Adam Update & Analysis
+      if (enableAdam) {
+        adamBall.position.set(adamPos.x, loss(adamPos.x, adamPos.z) + 0.1, adamPos.z);
+        adamPoints.push(adamBall.position.clone());
+        adamGeo.setFromPoints(adamPoints);
+        document.getElementById('adam-epoch').textContent = adamEpoch;
+        document.getElementById('adam-loss').textContent = loss(adamPos.x, adamPos.z).toFixed(4);
+
+        const adamH = getFullHessianAnalysis(hessian(adamPos.x, adamPos.z));
+        document.getElementById('adam-e1').textContent = adamH.l1.toFixed(2);
+        document.getElementById('adam-e2').textContent = adamH.l2.toFixed(2);
+
+        adamArrow1.position.set(adamPos.x, loss(adamPos.x, adamPos.z) + 0.15, adamPos.z);
+        adamArrow1.setDirection(new THREE.Vector3(adamH.v1.x, 0, adamH.v1.y).normalize());
+        adamArrow1.setLength(Math.min(1.5, 0.2 + Math.abs(adamH.l1) * 0.15));
+
+        adamArrow2.position.set(adamPos.x, loss(adamPos.x, adamPos.z) + 0.15, adamPos.z);
+        adamArrow2.setDirection(new THREE.Vector3(adamH.v2.x, 0, adamH.v2.y).normalize());
+        adamArrow2.setLength(Math.min(1.5, 0.2 + Math.abs(adamH.l2) * 0.15));
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
